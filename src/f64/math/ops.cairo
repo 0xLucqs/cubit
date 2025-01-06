@@ -1,10 +1,12 @@
 use core::option::OptionTrait;
 use core::result::{ResultTrait, ResultTraitImpl};
 use core::traits::{Into, TryInto};
-use core::integer::{u64_safe_divmod, u64_as_non_zero, u64_wide_mul};
+use core::integer::{u64_safe_divmod, u64_as_non_zero};
+use core::num::traits::WideMul;
+use core::num::traits::Sqrt;
 
-use cubit::f64::math::lut;
-use cubit::f64::types::fixed::{HALF, ONE, Fixed, FixedIntoFelt252, FixedTrait};
+use crate::f64::math::lut;
+use crate::f64::types::fixed::{HALF, ONE, Fixed, FixedIntoFelt252, FixedTrait};
 
 // PUBLIC
 
@@ -43,7 +45,7 @@ fn ceil(a: Fixed) -> Fixed {
 }
 
 fn div(a: Fixed, b: Fixed) -> Fixed {
-    let a_u128 = core::integer::u64_wide_mul(a.mag, ONE);
+    let a_u128 = WideMul::wide_mul(a.mag, ONE);
     let res_u128 = a_u128 / b.mag.into();
 
     // Re-apply sign
@@ -182,7 +184,7 @@ fn lt(a: Fixed, b: Fixed) -> bool {
 }
 
 fn mul(a: Fixed, b: Fixed) -> Fixed {
-    let prod_u128 = core::integer::u64_wide_mul(a.mag, b.mag);
+    let prod_u128 = WideMul::wide_mul(a.mag, b.mag);
 
     // Re-apply sign
     return FixedTrait::new((prod_u128 / ONE.into()).try_into().unwrap(), a.sign ^ b.sign);
@@ -269,7 +271,7 @@ fn round(a: Fixed) -> Fixed {
 // x must be positive
 fn sqrt(a: Fixed) -> Fixed {
     assert(a.sign == false, 'must be positive');
-    let root = core::integer::u128_sqrt(a.mag.into() * ONE.into());
+    let root = Sqrt::<u128>::sqrt(a.mag.into() * ONE.into());
     return FixedTrait::new(root.into(), false);
 }
 
@@ -277,16 +279,18 @@ fn sub(a: Fixed, b: Fixed) -> Fixed {
     return add(a, -b);
 }
 
-// Tests --------------------------------------------------------------------------------------------------------------
+// Tests
+// --------------------------------------------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
-    use cubit::f64::math::trig::{PI, HALF_PI};
-    use cubit::f64::test::helpers::{assert_precise, assert_relative};
+    use crate::f64::math::trig::{PI, HALF_PI};
+    use crate::f64::test::helpers::{assert_precise, assert_relative};
 
+    use crate::f64::types::fixed::FixedTryIntoU128;
     use super::{
         FixedTrait, ONE, round, floor, sqrt, ceil, lut, exp, exp2, exp2_int, pow, log10, log2, ln,
-        eq, ne, add, Fixed
+        eq, ne, add, Fixed,
     };
 
     #[test]
@@ -397,7 +401,7 @@ mod tests {
         let a = FixedTrait::new_unscaled(3, false);
         let b = FixedTrait::new(2147483648, false); // 0.5
         assert_relative(
-            pow(a, b), 7439101574, 'invalid pos base power', Option::None(())
+            pow(a, b), 7439101574, 'invalid pos base power', Option::None(()),
         ); // 1.7320508075688772
     }
 
@@ -406,7 +410,7 @@ mod tests {
     fn test_exp() {
         let a = FixedTrait::new_unscaled(2, false);
         assert_relative(
-            exp(a), 31735754293, 'invalid exp of 2', Option::None(())
+            exp(a), 31735754293, 'invalid exp of 2', Option::None(()),
         ); // 7.389056098793725
     }
 
@@ -441,7 +445,7 @@ mod tests {
 
         a = FixedTrait::new_unscaled(10, false);
         assert_relative(
-            log2(a), 14267572527, 'invalid log2 10', Option::None(())
+            log2(a), 14267572527, 'invalid log2 10', Option::None(()),
         ); // 3.321928094887362
     }
 
@@ -539,12 +543,12 @@ mod tests {
         let c = FixedTrait::new_unscaled(1, true);
 
         assert(a <= a, 'a <= a');
-        assert(a <= b == false, 'a <= b');
-        assert(a <= c == false, 'a <= c');
+        assert(!(a <= b), 'a <= b');
+        assert(!(a <= c), 'a <= c');
 
         assert(b <= a, 'b <= a');
         assert(b <= b, 'b <= b');
-        assert(b <= c == false, 'b <= c');
+        assert(!(b <= c), 'b <= c');
 
         assert(c <= a, 'c <= a');
         assert(c <= b, 'c <= b');
@@ -557,17 +561,17 @@ mod tests {
         let b = FixedTrait::new_unscaled(0, false);
         let c = FixedTrait::new_unscaled(1, true);
 
-        assert(a < a == false, 'a < a');
-        assert(a < b == false, 'a < b');
-        assert(a < c == false, 'a < c');
+        assert(!(a < a), 'a < a');
+        assert(!(a < b), 'a < b');
+        assert(!(a < c), 'a < c');
 
         assert(b < a, 'b < a');
-        assert(b < b == false, 'b < b');
-        assert(b < c == false, 'b < c');
+        assert(!(b < b), 'b < b');
+        assert(!(b < c), 'b < c');
 
         assert(c < a, 'c < a');
         assert(c < b, 'c < b');
-        assert(c < c == false, 'c < c');
+        assert(!(c < c), 'c < c');
     }
 
     #[test]
@@ -580,12 +584,12 @@ mod tests {
         assert(a >= b, 'a >= b');
         assert(a >= c, 'a >= c');
 
-        assert(b >= a == false, 'b >= a');
+        assert(!(b >= a), 'b >= a');
         assert(b >= b, 'b >= b');
         assert(b >= c, 'b >= c');
 
-        assert(c >= a == false, 'c >= a');
-        assert(c >= b == false, 'c >= b');
+        assert(!(c >= a), 'c >= a');
+        assert(!(c >= b), 'c >= b');
         assert(c >= c, 'c >= c');
     }
 
@@ -595,17 +599,17 @@ mod tests {
         let b = FixedTrait::new_unscaled(0, false);
         let c = FixedTrait::new_unscaled(1, true);
 
-        assert(a > a == false, 'a > a');
+        assert(!(a > a), 'a > a');
         assert(a > b, 'a > b');
         assert(a > c, 'a > c');
 
-        assert(b > a == false, 'b > a');
-        assert(b > b == false, 'b > b');
+        assert(!(b > a), 'b > a');
+        assert(!(b > b), 'b > b');
         assert(b > c, 'b > c');
 
-        assert(c > a == false, 'c > a');
-        assert(c > b == false, 'c > b');
-        assert(c > c == false, 'c > c');
+        assert(!(c > a), 'c > a');
+        assert(!(c > b), 'c > b');
+        assert(!(c > c), 'c > c');
     }
 
     #[test]
@@ -628,7 +632,7 @@ mod tests {
         let a = FixedTrait::new(HALF_PI / 2, false);
         assert(a.tan().mag == ONE, 'invalid quarter pi');
     }
-// #[test]
+    // #[test]
 // #[available_gas(1000000)]
 // fn test_cosh() {
 //     let a = FixedTrait::new_unscaled(2, false);
@@ -637,7 +641,7 @@ mod tests {
 //     ); // 3.762195691016423
 // }
 
-// #[test]
+    // #[test]
 // #[available_gas(1000000)]
 // fn test_sinh() {
 //     let a = FixedTrait::new_unscaled(2, false);
@@ -646,7 +650,7 @@ mod tests {
 //     ); // 3.6268604077773023
 // }
 
-// #[test]
+    // #[test]
 // #[available_gas(1000000)]
 // fn test_tanh() {
 //     let a = FixedTrait::new_unscaled(2, false);
@@ -655,21 +659,21 @@ mod tests {
 //     ); // 0.9640275800745076
 // }
 
-// #[test]
+    // #[test]
 // #[available_gas(1000000)]
 // fn test_acosh() {
 //     let a = FixedTrait::new(69400261067392811864, false); // 3.762195691016423
 //     assert_precise(a.acosh(), 2 * ONE, 'invalid two', Option::None(()));
 // }
 
-// #[test]
+    // #[test]
 // #[available_gas(1000000)]
 // fn test_asinh() {
 //     let a = FixedTrait::new(66903765733337761105, false); // 3.6268604077773023
 //     assert_precise(a.asinh(), 2 * ONE, 'invalid two', Option::None(()));
 // }
 
-// #[test]
+    // #[test]
 // #[available_gas(1000000)]
 // fn test_atanh() {
 //     let a = FixedTrait::new(16602069666338597000, false); // 0.9
